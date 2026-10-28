@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Физическая Лаборатория: Кнопки и Рычаги</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Matter.js (2D Physics Engine) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- Tone.js (Interactive Sound Effects) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        /* Custom Scrollbar for level select */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 3px;
+        }
+        .glow-effect {
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<div class="flex h-screen w-screen overflow-hidden bg-slate-950">
+    
+    <!-- Left Sidebar / Controls & HUD -->
+    <div class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col justify-between p-5 z-10 shadow-2xl">
+        <div>
+            <!-- Header -->
+            <div class="flex items-center space-x-3 mb-6">
+                <div class="p-3 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid font-bold fa-atom text-2xl animate-spin" style="animation-duration: 10s;"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black tracking-wide text-white">PHYSICS LAB</h1>
+                    <p class="text-xs text-slate-400">Симуляция Механизмов</p>
+                </div>
+            </div>
+
+            <!-- Level Info -->
+            <div class="bg-slate-800/60 backdrop-blur rounded-xl p-4 border border-slate-700/50 mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Уровень</span>
+                    <span id="level-number" class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30 font-bold">1 / 5</span>
+                </div>
+                <h2 id="level-title" class="text-lg font-bold text-slate-100 mb-1">Запуск реакции</h2>
+                <p id="level-desc" class="text-xs text-slate-300 leading-relaxed">Используйте мышкой тяжелый шар или нажмите на рычаг, чтобы активировать кнопку и открыть проход к финишу!</p>
+            </div>
+
+            <!-- Toolset & Spawnable Items -->
+            <div class="space-y-3 mb-5">
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Спавн объектов (Физика)</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="spawn-ball-btn" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500 text-slate-200 p-2.5 rounded-lg transition-all text-xs font-medium active:scale-95">
+                        <i class="fa-solid fa-circle text-blue-400 text-sm"></i>
+                        <span>Тяжелый Шар</span>
+                    </button>
+                    <button id="spawn-box-btn" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-amber-500 text-slate-200 p-2.5 rounded-lg transition-all text-xs font-medium active:scale-95">
+                        <i class="fa-solid fa-cube text-amber-400 text-sm"></i>
+                        <span>Деревянный Куб</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Gravity Controls -->
+            <div class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-medium text-slate-300"><i class="fa-solid fa-arrows-up-down mr-1"></i>Гравитация Y:</span>
+                    <span id="gravity-value" class="text-xs font-mono font-bold text-blue-400">1.0</span>
+                </div>
+                <input id="gravity-slider" type="range" min="-1" max="2" step="0.1" value="1" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+            </div>
+
+            <!-- Legend / Instructions -->
+            <div class="text-xs text-slate-400 space-y-2 border-t border-slate-800 pt-4">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                    <span><b>Зеленая зона</b> — Цель (Финиш)</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
+                    <span><b>Кнопка</b> — Зажимается весом</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
+                    <span><b>Рычаг</b> — Переключается кликом/ударом</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-2 italic"><i class="fa-solid fa-hand-pointer mr-1"></i>Все синие и деревянные предметы можно перетаскивать мышкой!</p>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-2 border-t border-slate-800 pt-4">
+            <button id="reset-btn" class="w-full flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 rounded-xl transition-all font-medium text-sm border border-slate-700">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span>Перезапустить уровень</span>
+            </button>
+            <div class="flex space-x-2">
+                <button id="prev-btn" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-xl text-xs font-medium border border-slate-700 disabled:opacity-40">
+                    <i class="fa-solid fa-chevron-left mr-1"></i> Назад
+                </button>
+                <button id="next-btn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-xs font-medium shadow-lg shadow-blue-500/20">
+                    Вперед <i class="fa-solid fa-chevron-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game Canvas Container -->
+    <div class="flex-1 relative flex items-center justify-center bg-slate-950 p-4">
+        <div id="canvas-container" class="relative rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-900">
+            <!-- Canvas is created here dynamically -->
+
+            <!-- Win Overlay Signal -->
+            <div id="win-modal" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center z-20 transition-all duration-300">
+                <div class="bg-slate-900 border border-emerald-500/30 p-8 rounded-2xl text-center max-w-sm shadow-2xl glow-effect transform scale-100">
+                    <div class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/40">
+                        <i class="fa-solid fa-check text-3xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-white mb-2">Уровень пройден!</h3>
+                    <p class="text-xs text-slate-300 mb-6">Физическая цепь успешно сработала, целевой объект доставлен!</p>
+                    <button id="next-level-modal-btn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl shadow-lg transition-all">
+                        Следующий уровень <i class="fa-solid fa-arrow-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+window.onload = function () {
+    // --- MATTER.JS MODULES ---
+    const { Engine, Render, Runner, Bodies, Composite, Constraint, Mouse, MouseConstraint, Vector, Body, Events } = Matter;
+
+    // --- GAME STATE ---
+    let engine, render, runner, mouseConstraint;
+    let currentLevelIndex = 0;
+    let levelCompleted = false;
+
+    // Level Interactive Logic Trackers
+    let activeTriggers = []; // Stores update callbacks for levers, buttons, doors
+    let targetZone = null;
+    let mainGoalBody = null;
+
+    // Canvas size dimensions
+    const WIDTH = 1000;
+    const HEIGHT = 700;
+
+    const canvasContainer = document.getElementById('canvas-container');
+
+    // Audio Engine via Tone.js
+    let synth, clickSynth;
+    function initAudio() {
+        if (!synth) {
+            synth = new Tone.PolySynth(Tone.Synth).toDestination();
+            synth.volume.value = -12;
+            clickSynth = new Tone.MembraneSynth().toDestination();
+            clickSynth.volume.value = -10;
+        }
+        if (Tone.context.state !== 'running') {
+            Tone.start();
+        }
+    }
+
+    function playSound(type) {
+        initAudio();
+        try {
+            if (type === 'click') clickSynth.triggerAttackRelease('C2', '8n');
+            if (type === 'trigger') synth.triggerAttackRelease(['C4', 'E4'], '8n');
+            if (type === 'win') synth.triggerAttackRelease(['C4', 'E4', 'G4', 'C5'], '4n');
+            if (type === 'spawn') clickSynth.triggerAttackRelease('G2', '16n');
+        } catch(e){}
+    }
+
+    // --- SETUP MATTER ENGINE ---
+    function initEngine() {
+        engine = Engine.create({
+            gravity: { x: 0, y: 1, scale: 0.001 }
+        });
+
+        render = Render.create({
+            element: canvasContainer,
+            engine: engine,
+            options: {
+                width: WIDTH,
+                height: HEIGHT,
+                wireframes: false,
+                background: '#0f172a',
+                showAngleIndicator: false
+            }
+        });
+
+        Render.run(render);
+        runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // Add Mouse Control
+        const mouse = Mouse.create(render.canvas);
+        mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: { visible: true, color: '#3b82f6' }
+            }
+        });
+        Composite.add(engine.world, mouseConstraint);
+        render.mouse = mouse;
+
+        // Sound on mouse drag click
+        Events.on(mouseConstraint, 'mousedown', () => initAudio());
+
+        // Custom render loop for extra drawing (Glows, Cables, Text)
+        Events.on(render, 'afterRender', customRender);
+
+        // Physics tick update loop
+        Events.on(engine, 'beforeUpdate', () => {
+            activeTriggers.forEach(trigger => trigger());
+            checkWinCondition();
+        });
+    }
+
+    // --- CUSTOM DRAWING OVERLAY ---
+    function customRender() {
+        const ctx = render.context;
+        
+        // Custom draw connectors/wires for triggers
+        activeTriggers.wires?.forEach(wire => {
+            ctx.beginPath();
+            ctx.moveTo(wire.from.x, wire.from.y);
+            ctx.lineTo(wire.to.x, wire.to.y);
+            ctx.strokeStyle = wire.active ? '#10b981' : '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
+    }
+
+    // --- MECHANISM CREATORS ---
+
+    // 1. Create Heavy Pressure Button
+    function createButton(x, y, width = 60, targetDoor, wireTargetPos) {
+        const base = Bodies.rectangle(x, y, width, 15, { isStatic: true, render: { fillStyle: '#334155' } });
+        const cap = Bodies.rectangle(x, y - 10, width - 8, 12, {
+            isStatic: false,
+            density: 0.001,
+            friction: 0.5,
+            render: { fillStyle: '#ef4444' }
+        });
+
+        // Spring constraint holding button up
+        const spring = Constraint.create({
+            bodyA: base,
+            bodyB: cap,
+            pointA: { x: 0, y: -5 },
+            pointB: { x: 0, y: 0 },
+            stiffness: 0.3,
+            length: 10,
+            render: { visible: false }
+        });
+
+        // Limit sideways movement of button cap
+        const slider = Constraint.create({
+            bodyA: base,
+            bodyB: cap,
+            stiffness: 1,
+            length: 10,
+            render: { visible: false }
+        });
+
+        Composite.add(engine.world, [base, cap, spring, slider]);
+
+        let isPressed = false;
+
+        // Logic check function runs on tick
+        const updateLogic = () => {
+            const pressDistance = Math.abs(cap.position.y - base.position.y);
+            const pressed = pressDistance < 6;
+
+            if (pressed !== isPressed) {
+                isPressed = pressed;
+                cap.render.fillStyle = isPressed ? '#10b981' : '#ef4444';
+                playSound(isPressed ? 'trigger' : 'click');
+            }
+
+            // Move connected door based on button state
+            if (targetDoor) {
+                const targetY = isPressed ? targetDoor.openY : targetDoor.closedY;
+                const currentY = targetDoor.body.position.y;
+                const newY = currentY + (targetY - currentY) * 0.1;
+                Body.setPosition(targetDoor.body, { x: targetDoor.body.position.x, y: newY });
+            }
+        };
+
+        // Wire renderer metadata
+        if (!activeTriggers.wires) activeTriggers.wires = [];
+        if (targetDoor) {
+            activeTriggers.wires.push({
+                from: base.position,
+                to: wireTargetPos || targetDoor.body.position,
+                get active() { return isPressed; }
+            });
+        }
+
+        activeTriggers.push(updateLogic);
+        return cap;
+    }
+
+    // 2. Create Mechanical Lever
+    function createLever(x, y, targetAction) {
+        const base = Bodies.circle(x, y, 12, { isStatic: true, render: { fillStyle: '#475569' } });
+        const handle = Bodies.rectangle(x, y - 30, 10, 60, {
+            density: 0.002,
+            frictionAir: 0.05,
+            render: { fillStyle: '#f59e0b' }
+        });
+
+        // Pivot joint
+        const pivot = Constraint.create({
+            bodyA: base,
+            bodyB: handle,
+            pointA: { x: 0, y: 0 },
+            pointB: { x: 0, y: 20 },
+            stiffness: 0.9,
+            length: 0,
+            render: { visible: true, strokeStyle: '#94a3b8', lineWidth: 2 }
+        });
+
+        Composite.add(engine.world, [base, handle, pivot]);
+
+        let state = false; // false = left, true = right
+
+        const updateLogic = () => {
+            const angle = handle.angle;
+            const newState = angle > 0.3;
+
+            if (newState !== state) {
+                state = newState;
+                handle.render.fillStyle = state ? '#10b981' : '#f59e0b';
+                playSound('trigger');
+            }
+
+            if (targetAction) targetAction(state);
+        };
+
+        activeTriggers.push(updateLogic);
+    }
+
+    // 3. Create Sliding Barrier / Door
+    function createDoor(x, y, width, height, openOffsetY) {
+        const doorBody = Bodies.rectangle(x, y, width, height, {
+            isStatic: true,
+            render: { fillStyle: '#64748b' }
+        });
+
+        Composite.add(engine.world, doorBody);
+
+        return {
+            body: doorBody,
+            closedY: y,
+            openY: y + openOffsetY
+        };
+    }
+
+    // --- LEVEL DEFINITIONS ---
+    const levels = [
+        // LEVEL 1: Introduction to Buttons and Doors
+        {
+            title: "Уровень 1: Кнопки и Двери",
+            desc: "Положите тяжелый шар на красную кнопку, чтобы открыть проход для металлического сферы к финишу.",
+            setup: () => {
+                // Goal Target Zone
+                targetZone = { x: 850, y: 600, w: 100, h: 20 };
+                
+                // Walls & Floors
+                Composite.add(engine.world, [
+                    Bodies.rectangle(500, 680, 1000, 40, { isStatic: true, render: { fillStyle: '#1e293b' } }), // Floor
+                    Bodies.rectangle(200, 450, 400, 20, { isStatic: true, angle: 0.1, render: { fillStyle: '#334155' } }), // Ramp
+                    Bodies.rectangle(750, 350, 300, 20, { isStatic: true, angle: -0.1, render: { fillStyle: '#334155' } }),
+                ]);
+
+                // Door blocking finish
+                const door = createDoor(850, 520, 20, 160, -140);
+
+                // Button controlling door
+                createButton(350, 430, 70, door);
+
+                // Main Payload Ball
+                mainGoalBody = Bodies.circle(120, 100, 22, {
+                    density: 0.005,
+                    restitution: 0.4,
+                    render: { fillStyle: '#3b82f6' }
+                });
+
+                // Spawn Extra Ball for Button
+                const heavyBall = Bodies.circle(280, 200, 30, {
+                    density: 0.05,
+                    render: { fillStyle: '#60a5fa' }
+                });
+
+                Composite.add(engine.world, [mainGoalBody, heavyBall]);
+            }
+        },
+
+        // LEVEL 2: Mechanical Lever & Pendulum
+        {
+            title: "Уровень 2: Рычаг и Импульс",
+            desc: "Поверните рычаг влево/вправо или ударите по нему, чтобы запустить вращение платформы и направить шар.",
+            setup: () => {
+                targetZone = { x: 150, y: 630, w: 120, h: 20 };
+
+                Composite.add(engine.world, [
+                    Bodies.rectangle(500, 680, 1000, 40, { isStatic: true, render: { fillStyle: '#1e293b' } }),
+                    Bodies.rectangle(750, 250, 350, 20, { isStatic: true, angle: -0.25, render: { fillStyle: '#334155' } }),
+                ]);
+
+                // Bridge Door
+                const bridge = createDoor(450, 450, 220, 20, -150);
+
+                // Lever linked to bridge
+                createLever(780, 180, (active) => {
+                    const targetY = active ? bridge.openY : bridge.closedY;
+                    const currentY = bridge.body.position.y;
+                    Body.setPosition(bridge.body, {
+                        x: bridge.body.position.x,
+                        y: currentY + (targetY - currentY) * 0.08
+                    });
+                });
+
+                mainGoalBody = Bodies.circle(850, 80, 20, {
+                    density: 0.003,
+                    restitution: 0.5,
+                    render: { fillStyle: '#3b82f6' }
+                });
+
+                Composite.add(engine.world, mainGoalBody);
+            }
+        },
+
+        // LEVEL 3: Elevator Chain & Double Buttons
+        {
+            title: "Уровень 3: Двойной Механизм",
+            desc: "Задействуйте оба механизма, чтобы поднять барьер и спустить платформу.",
+            setup: () => {
+                targetZone = { x: 880, y: 630, w: 100, h: 20 };
+
+                Composite.add(engine.world, [
+                    Bodies.rectangle(500, 680, 1000, 40, { isStatic: true, render: { fillStyle: '#1e293b' } }),
+                    Bodies.rectangle(200, 250, 300, 20, { isStatic: true, angle: 0.15, render: { fillStyle: '#334155' } }),
+                    Bodies.rectangle(550, 450, 300, 20, { isStatic: true, angle: -0.1, render: { fillStyle: '#334155' } }),
+                ]);
+
+                const door1 = createDoor(400, 330, 20, 140, -120);
+                const door2 = createDoor(750, 530, 20, 140, -120);
+
+                createButton(280, 230, 60, door1);
+                createButton(600, 430, 60, door2);
+
+                mainGoalBody = Bodies.circle(100, 100, 22, {
+                    density: 0.004,
+                    render: { fillStyle: '#3b82f6' }
+                });
+
+                // Spawnable weights already provided
+                const box1 = Bodies.rectangle(250, 80, 40, 40, { density: 0.02, render: { fillStyle: '#f59e0b' } });
+                const box2 = Bodies.rectangle(580, 200, 45, 45, { density: 0.02, render: { fillStyle: '#f59e0b' } });
+
+                Composite.add(engine.world, [mainGoalBody, box1, box2]);
+            }
+        },
+
+        // LEVEL 4: Newton's Cradle / Domino Physics
+        {
+            title: "Уровень 4: Физическое Домино",
+            desc: "Толкните первый блок или сбросьте шар, чтобы запустить цепную реакцию для нажатия рычага.",
+            setup: () => {
+                targetZone = { x: 850, y: 250, w: 120, h: 20 };
+
+                Composite.add(engine.world, [
+                    Bodies.rectangle(500, 680, 1000, 40, { isStatic: true, render: { fillStyle: '#1e293b' } }),
+                    Bodies.rectangle(400, 500, 600, 20, { isStatic: true, render: { fillStyle: '#334155' } }),
+                    Bodies.rectangle(850, 300, 150, 20, { isStatic: true, render: { fillStyle: '#334155' } }),
+                ]);
+
+                // Dominoes
+                for (let i = 0; i < 7; i++) {
+                    const domino = Bodies.rectangle(220 + i * 50, 440, 12, 80, {
+                        friction: 0.4,
+                        density: 0.01,
+                        render: { fillStyle: '#38bdf8' }
+                    });
+                    Composite.add(engine.world, domino);
+                }
+
+                const door = createDoor(850, 420, 20, 140, -130);
+
+                // Lever at the end of domino chain
+                createLever(580, 460, (active) => {
+                    const targetY = active ? door.openY : door.closedY;
+                    const currentY = door.body.position.y;
+                    Body.setPosition(door.body, { x: door.body.position.x, y: currentY + (targetY - currentY) * 0.1 });
+                });
+
+                mainGoalBody = Bodies.circle(120, 430, 22, {
+                    density: 0.005,
+                    render: { fillStyle: '#3b82f6' }
+                });
+
+                Composite.add(engine.world, mainGoalBody);
+            }
+        },
+
+        // LEVEL 5: Gravity Flip & Final Challenge
+        {
+            title: "Уровень 5: Гравитационный Хаос",
+            desc: "Используйте изменения гравитации в меню слева и физику рычагов для доставки шара!",
+            setup: () => {
+                targetZone = { x: 500, y: 120, w: 150, h: 20 };
+
+                Composite.add(engine.world, [
+                    Bodies.rectangle(500, 680, 1000, 40, { isStatic: true, render: { fillStyle: '#1e293b' } }),
+                    Bodies.rectangle(500, 20, 1000, 40, { isStatic: true, render: { fillStyle: '#1e293b' } }),
+                    Bodies.rectangle(500, 200, 400, 20, { isStatic: true, render: { fillStyle: '#334155' } }),
+                ]);
+
+                const door = createDoor(500, 100, 20, 140, 120);
+                createButton(200, 650, 90, door);
+
+                mainGoalBody = Bodies.circle(150, 550, 22, {
+                    density: 0.005,
+                    restitution: 0.6,
+                    render: { fillStyle: '#3b82f6' }
+                });
+
+                Composite.add(engine.world, mainGoalBody);
+            }
+        }
+    ];
+
+    // --- LEVEL MANAGEMENT ---
+    function loadLevel(index) {
+        if (index < 0 || index >= levels.length) return;
+
+        currentLevelIndex = index;
+        levelCompleted = false;
+
+        // Hide Win Modal
+        document.getElementById('win-modal').classList.add('hidden');
+
+        // Clear Physics World & Triggers
+        Composite.clear(engine.world, false);
+        Composite.add(engine.world, mouseConstraint); // Re-add mouse control
+        activeTriggers = [];
+        activeTriggers.wires = [];
+
+        // Outer Boundaries
+        const wallOptions = { isStatic: true, render: { fillStyle: '#0f172a' } };
+        Composite.add(engine.world, [
+            Bodies.rectangle(-20, HEIGHT / 2, 40, HEIGHT, wallOptions),
+            Bodies.rectangle(WIDTH + 20, HEIGHT / 2, 40, HEIGHT, wallOptions),
+            Bodies.rectangle(WIDTH / 2, -20, WIDTH, 40, wallOptions)
+        ]);
+
+        // Load Level Setup
+        const level = levels[index];
+        level.setup();
+
+        // Target Zone Rendering Static Sensor
+        if (targetZone) {
+            const sensor = Bodies.rectangle(
+                targetZone.x, targetZone.y, targetZone.w, targetZone.h,
+                { isStatic: true, isSensor: true, render: { fillStyle: '#10b981' } }
+            );
+            Composite.add(engine.world, sensor);
+        }
+
+        // Update UI Info
+        document.getElementById('level-number').innerText = `${index + 1} / ${levels.length}`;
+        document.getElementById('level-title').innerText = level.title;
+        document.getElementById('level-desc').innerText = level.desc;
+
+        document.getElementById('prev-btn').disabled = index === 0;
+        document.getElementById('next-btn').disabled = index === levels.length - 1;
+    }
+
+    // --- WIN CONDITION CHECK ---
+    function checkWinCondition() {
+        if (levelCompleted || !targetZone || !mainGoalBody) return;
+
+        const pos = mainGoalBody.position;
+        const inX = Math.abs(pos.x - targetZone.x) < targetZone.w / 2;
+        const inY = Math.abs(pos.y - targetZone.y) < targetZone.h / 2;
+
+        if (inX && inY) {
+            levelCompleted = true;
+            playSound('win');
+            document.getElementById('win-modal').classList.remove('hidden');
+        }
+    }
+
+    // --- UI EVENT LISTENERS ---
+    document.getElementById('reset-btn').addEventListener('click', () => loadLevel(currentLevelIndex));
+    document.getElementById('prev-btn').addEventListener('click', () => loadLevel(currentLevelIndex - 1));
+    document.getElementById('next-btn').addEventListener('click', () => loadLevel(currentLevelIndex + 1));
+    document.getElementById('next-level-modal-btn').addEventListener('click', () => {
+        if (currentLevelIndex + 1 < levels.length) {
+            loadLevel(currentLevelIndex + 1);
+        } else {
+            loadLevel(0); // Loop back
+        }
+    });
+
+    // Spawn Buttons
+    document.getElementById('spawn-ball-btn').addEventListener('click', () => {
+        playSound('spawn');
+        const ball = Bodies.circle(WIDTH / 2 + (Math.random() * 40 - 20), 80, 25, {
+            density: 0.01,
+            restitution: 0.5,
+            render: { fillStyle: '#3b82f6' }
+        });
+        Composite.add(engine.world, ball);
+    });
+
+    document.getElementById('spawn-box-btn').addEventListener('click', () => {
+        playSound('spawn');
+        const box = Bodies.rectangle(WIDTH / 2 + (Math.random() * 40 - 20), 80, 45, 45, {
+            density: 0.015,
+            friction: 0.6,
+            render: { fillStyle: '#f59e0b' }
+        });
+        Composite.add(engine.world, box);
+    });
+
+    // Gravity Slider
+    const gravitySlider = document.getElementById('gravity-slider');
+    const gravityValue = document.getElementById('gravity-value');
+    gravitySlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        engine.gravity.y = val;
+        gravityValue.innerText = val.toFixed(1);
+    });
+
+    // START GAME
+    initEngine();
+    loadLevel(0);
+};
+</script>
+</html>
